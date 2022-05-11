@@ -160,6 +160,7 @@
     <ClInclude Include="inc\Core\MetadataSet.h" />
     <ClInclude Include="inc\Core\SearchQuery.h" />
     <ClInclude Include="inc\Core\SearchResult.h" />
+    <ClInclude Include="inc\Core\SPANN\Compressor.h" />
     <ClInclude Include="inc\Core\SPANN\ExtraFullGraphSearcher.h" />
     <ClInclude Include="inc\Core\SPANN\IExtraSearcher.h" />
     <ClInclude Include="inc\Core\SPANN\Index.h" />
