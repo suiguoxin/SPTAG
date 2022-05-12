@@ -20,7 +20,7 @@ namespace SPTAG {
             virtual ~Compressor(){}
 
             // return the compressed sie
-            size_t Compress(const void* src, void* dst) 
+            std::string Compress(const void* src, size_t srcSize)
             {
                 //size_t est_compress_size = ZSTD_compressBound(data.size());
                 //buffer.resize(est_compress_size);
@@ -31,12 +31,13 @@ namespace SPTAG {
                 //buffer.resize(compress_size);
                 //buffer.shrink_to_fit();
                 //return compress_size;
-                return 100;
+                return "0123456789";
             }
 
             size_t GetCompressedSize(const void * src, size_t srcSize)
             {
-                return 100;
+                std::string dst = Compress(src, srcSize);
+                return dst.size();
             }
 
         private:
