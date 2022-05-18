@@ -5,7 +5,8 @@
 #define _SPTAG_SPANN_COMPRESSOR_H_
 
 #include <string>
-// #include "zstd.h"
+#include "zstd.h"
+#include "../Common.h"
 
 namespace SPTAG {
     namespace SPANN {
@@ -18,34 +19,34 @@ namespace SPTAG {
             }
 
             virtual ~Compressor(){}
-
-            // return the compressed sie
-            std::string Compress(const void* src, size_t srcSize)
+            
+            std::string Compress(const std::string &src)
             {
-                //size_t est_compress_size = ZSTD_compressBound(data.size());
-                //buffer.resize(est_compress_size);
+                size_t est_compress_size = ZSTD_compressBound(src.size());
 
-                //auto compress_size = ZSTD_compress((void*)buffer.data(), est_compress_size,
-                //    data.data(), data.size(), compress_level);
+                std::string buffer{};
+                buffer.resize(est_compress_size);
+                size_t compressed_size = ZSTD_compress((void*)buffer.data(), est_compress_size,
+                    src.data(), src.size(), 1);
 
-                //buffer.resize(compress_size);
-                //buffer.shrink_to_fit();
-                //return compress_size;
-                return "0123456789";
+                buffer.resize(compressed_size);
+                buffer.shrink_to_fit();
+
+                return buffer;
             }
 
-            size_t GetCompressedSize(const void * src, size_t srcSize)
+            // return the compressed sie
+            size_t GetCompressedSize(const std::string &src)
             {
-                std::string dst = Compress(src, srcSize);
+                std::string dst = Compress(src);
                 return dst.size();
             }
 
         private:
             int compress_level;
-            std::string buffer{};
+            //std::string buffer{};
             std::string dictionary{};
         };
-
     } // SPANN
 } // SPTAG
 

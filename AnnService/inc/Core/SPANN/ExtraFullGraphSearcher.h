@@ -495,7 +495,7 @@ namespace SPTAG
                         if (sizeToCompress != postingListFullData.size()) {
                             LOG(Helper::LogLevel::LL_Error, "Size to compress NOT MATCH! PostingListFullData size: %zu sizeToCompress: %zu \n", postingListFullData.size(), sizeToCompress);
                         }
-                        postingListBytes[i] = m_pCompressor->GetCompressedSize(postingListFullData.c_str(), sizeToCompress);
+                        postingListBytes[i] = m_pCompressor->GetCompressedSize(postingListFullData);
                         if (i % 10000 == 0) {
                             LOG(Helper::LogLevel::LL_Info, "Posting list %d/%d, compressed size: %d, compression ratio: %.4f\n", i, postingListSize.size(), postingListBytes[i], postingListBytes[i] / float(sizeToCompress));
                         }
@@ -950,7 +950,7 @@ namespace SPTAG
                         if (sizeToCompress != postingListFullData.size()) {
                             LOG(Helper::LogLevel::LL_Error, "Size to compress NOT MATCH! PostingListFullData size: %zu sizeToCompress: %zu \n", postingListFullData.size(), sizeToCompress);
                         }
-                        std::string compressedData = m_pCompressor->Compress(postingListFullData.c_str(), sizeToCompress);
+                        std::string compressedData = m_pCompressor->Compress(postingListFullData);
                         size_t compressedSize = compressedData.size();
                         if (compressedSize != p_postingListBytes[indexPostingList])
                         {
