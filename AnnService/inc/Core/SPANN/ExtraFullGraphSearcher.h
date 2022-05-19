@@ -81,8 +81,8 @@ namespace SPTAG
             }
         };
 
-#define ProcessPosting(vectorInfoSize) \
-        for (char *vectorInfo = buffer + listInfo->pageOffset, *vectorInfoEnd = vectorInfo + listInfo->listEleCount * vectorInfoSize; vectorInfo < vectorInfoEnd; vectorInfo += vectorInfoSize) { \
+#define ProcessPosting(p_postingListFullData, vectorInfoSize) \
+        for (char *vectorInfo = p_postingListFullData, *vectorInfoEnd = vectorInfo + listInfo->listEleCount * vectorInfoSize; vectorInfo < vectorInfoEnd; vectorInfo += vectorInfoSize) { \
             int vectorID = *(reinterpret_cast<int*>(vectorInfo)); \
             if (p_exWorkSpace->m_deduper.CheckAndSet(vectorID)) continue; \
             auto distance2leaf = p_index->ComputeDistance(queryResults.GetQuantizedTarget(), vectorInfo + sizeof(int)); \
@@ -122,7 +122,6 @@ namespace SPTAG
                     }
 
                     m_indexFiles.emplace_back(curIndexFile);
-                    // TODO: load head info after compression
                     m_listInfos.emplace_back(0);
                     m_totalListCount += LoadingHeadInfo(curFile, p_opt.m_searchPostingPageLimit, m_listInfos.back());
 
@@ -139,7 +138,9 @@ namespace SPTAG
             virtual void SearchIndex(ExtraWorkSpace* p_exWorkSpace,
                 QueryResult& p_queryResults,
                 std::shared_ptr<VectorIndex> p_index,
-                SearchStats* p_stats, std::set<int>* truth, std::map<int, std::set<int>>* found)
+                SearchStats* p_stats,
+                bool m_enableDataCompression,
+                std::set<int>* truth, std::map<int, std::set<int>>* found)
             {
                 const uint32_t postingListCount = static_cast<uint32_t>(p_exWorkSpace->m_postingIDs.size());
 
@@ -190,12 +191,25 @@ namespace SPTAG
 
 #ifdef BATCH_READ // async batch read
                     auto vectorInfoSize = m_vectorInfoSize;
-                    request.m_callback = [&p_exWorkSpace, &queryResults, &p_index, vectorInfoSize](Helper::AsyncReadRequest* request)
+                    request.m_callback = [&p_exWorkSpace, &queryResults, &p_index, vectorInfoSize, m_enableDataCompression](Helper::AsyncReadRequest* request)
                     {
                         char* buffer = request->m_buffer;
                         ListInfo* listInfo = (ListInfo*)(request->m_payload);
-                        // TODO: decompress data buffer
-                        ProcessPosting(vectorInfoSize)
+
+                        // decompress posting list
+                        char* p_postingListFullData;
+                        if (m_enableDataCompression)
+                        {
+                            std::shared_ptr<Compressor> m_pCompressor; //TODO: reuse
+                            std::string postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
+                            p_postingListFullData = postingListFullData.data();
+                        }
+                        else 
+                        {
+                            p_postingListFullData = buffer + listInfo->pageOffset;
+                        }
+                        
+                        ProcessPosting(p_postingListFullData, vectorInfoSize);
                     };
 #else // async read
                     request.m_callback = [&p_exWorkSpace](Helper::AsyncReadRequest* request)
@@ -236,7 +250,7 @@ namespace SPTAG
                 }
 #endif
 #endif
-                if (truth) {
+                if (truth) { // TODO: check truth
                     for (uint32_t pi = 0; pi < postingListCount; ++pi)
                     {
                         auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
@@ -244,9 +258,23 @@ namespace SPTAG
                         ListInfo* listInfo = &(m_listInfos[curPostingID / m_listPerFile][curPostingID % m_listPerFile]);
                         char* buffer = (char*)((p_exWorkSpace->m_pageBuffers[pi]).GetBuffer());
 
+                        char* p_postingListFullData;
+                        if (m_enableDataCompression)
+                        {
+                            std::string postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
+                            p_postingListFullData = postingListFullData.data();
+                        }
+                        else
+                        {
+                            p_postingListFullData = buffer + listInfo->pageOffset;
+                        }
+
                         for (int i = 0; i < listInfo->listEleCount; ++i) {
-                            char* vectorInfo = buffer + listInfo->pageOffset + i * m_vectorInfoSize;
+                            char* vectorInfo = p_postingListFullData + i * m_vectorInfoSize;
                             int vectorID = *(reinterpret_cast<int*>(vectorInfo));
+
+                            LOG(Helper::LogLevel::LL_Info, "vectorID: %d\n", vectorID);
+
                             if (truth && truth->count(vectorID)) (*found)[curPostingID].insert(vectorID);
                         }
                     }
@@ -487,9 +515,14 @@ namespace SPTAG
                 if (p_opt.m_enableDataCompression)
                 {
                     LOG(Helper::LogLevel::LL_Info, "Getting compressed size of each posting list...\n");
-                    // TODO: omp parallel since the second posting list
+                    // TODO: omp parallel
                     //#pragma omp parallel for schedule(dynamic)
                     for (int i = 0; i < postingListSize.size(); i++) {
+                        // do not compress if no data
+                        if (postingListSize[i] == 0) {
+                            postingListBytes[i] = 0;
+                            continue;
+                        }
                         std::string postingListFullData = GetPostingListFullData(i, postingListSize[i], selections, fullVectors);
                         size_t sizeToCompress = postingListSize[i] * vectorInfoSize;
                         if (sizeToCompress != postingListFullData.size()) {
@@ -526,7 +559,7 @@ namespace SPTAG
                     std::vector<int> postingOrderInIndex;
                     SelectPostingOffset(p_opt.m_enableDataCompression, vectorInfoSize, curPostingListSizes, curPostingListBytes, postPageNum, postPageOffset, postingOrderInIndex);
 
-                    // TODO:what is LoadBatch, load data into selections?: select vectors for each posting list
+                    // LoadBatch: select vectors for each posting list
                     if (p_opt.m_ssdIndexFileNum > 1) selections.LoadBatch(selectionsBatchOffset[i], selectionsBatchOffset[i + 1]);
                     // write one file
                     OutputSSDIndexFile((i == 0) ? outputFile : outputFile + "_" + std::to_string(i),
@@ -568,6 +601,8 @@ namespace SPTAG
         private:
             struct ListInfo
             {
+                std::size_t listTotalBytes = 0;
+                
                 int listEleCount = 0;
 
                 std::uint16_t listPageCount = 0;
@@ -624,6 +659,10 @@ namespace SPTAG
                 int pageNum;
                 for (int i = 0; i < m_listCount; ++i)
                 {
+                    if (ptr->ReadBinary(sizeof(m_listInfos[i].listTotalBytes), reinterpret_cast<char*>(&(m_listInfos[i].listTotalBytes))) != sizeof(m_listInfos[i].listTotalBytes)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
+                        exit(1);
+                    }
                     if (ptr->ReadBinary(sizeof(pageNum), reinterpret_cast<char*>(&(pageNum))) != sizeof(pageNum)) {
                         LOG(Helper::LogLevel::LL_Error, "Failed to read head info file!\n");
                         exit(1);
@@ -642,9 +681,8 @@ namespace SPTAG
                     }
 
                     m_listInfos[i].listOffset = (static_cast<uint64_t>(m_listPageOffset + pageNum) << PageSizeEx);
-                    // TODO: why modify here
-                    m_listInfos[i].listEleCount = min(m_listInfos[i].listEleCount, (min(static_cast<int>(m_listInfos[i].listPageCount), p_postingPageLimit) << PageSizeEx) / m_vectorInfoSize);
-                    m_listInfos[i].listPageCount = static_cast<std::uint16_t>(ceil((m_vectorInfoSize * m_listInfos[i].listEleCount + m_listInfos[i].pageOffset) * 1.0 / (1 << PageSizeEx)));
+                    // m_listInfos[i].listEleCount = min(m_listInfos[i].listEleCount, (min(static_cast<int>(m_listInfos[i].listPageCount), p_postingPageLimit) << PageSizeEx) / m_vectorInfoSize);
+                    // m_listInfos[i].listPageCount = static_cast<std::uint16_t>(ceil((m_vectorInfoSize * m_listInfos[i].listEleCount + m_listInfos[i].pageOffset) * 1.0 / (1 << PageSizeEx)));
                     totalListElementCount += m_listInfos[i].listEleCount;
                     int pageCount = m_listInfos[i].listPageCount;
 
@@ -810,7 +848,7 @@ namespace SPTAG
                 // meta size of global info
                 std::uint64_t listOffset = sizeof(int) * 4;
                 // meta size of the posting lists
-                listOffset += (sizeof(int) + sizeof(std::uint16_t) + sizeof(int) + sizeof(std::uint16_t)) * p_postingListSizes.size();
+                listOffset += (sizeof(size_t) + sizeof(int) + sizeof(std::uint16_t) + sizeof(int) + sizeof(std::uint16_t)) * p_postingListSizes.size();
 
                 std::unique_ptr<char[]> paddingVals(new char[PageSize]);
                 memset(paddingVals.get(), 0, sizeof(char) * PageSize);
@@ -856,6 +894,7 @@ namespace SPTAG
                 // Meta of each posting list
                 for (int i = 0; i < p_postingListSizes.size(); ++i)
                 {
+                    size_t postingListByte = 0;
                     int pageNum = 0; // starting page number
                     std::uint16_t pageOffset = 0;
                     int listEleCount = 0;
@@ -866,12 +905,17 @@ namespace SPTAG
                         pageNum = p_postPageNum[i];
                         pageOffset = static_cast<std::uint16_t>(p_postPageOffset[i]);
                         listEleCount = static_cast<int>(p_postingListSizes[i]);
-                        size_t postingListByte = p_enableDataCompression ? p_postingListBytes[i] : p_spacePerVector * p_postingListSizes[i];
+                        postingListByte = p_enableDataCompression ? p_postingListBytes[i] : p_spacePerVector * p_postingListSizes[i];
                         listPageCount = static_cast<std::uint16_t>(postingListByte / PageSize);
                         if (0 != (postingListByte % PageSize))
                         {
                             ++listPageCount;
                         }
+                    }
+                    // Total bytes of the posting list
+                    if (ptr->WriteBinary(sizeof(postingListByte), reinterpret_cast<char*>(&postingListByte)) != sizeof(postingListByte)) {
+                        LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                        exit(1);
                     }
                     // Page number of the posting list
                     if (ptr->WriteBinary(sizeof(pageNum), reinterpret_cast<char*>(&pageNum)) != sizeof(pageNum)) {
@@ -944,6 +988,9 @@ namespace SPTAG
                     }
                     
                     if (p_enableDataCompression) { // get posting list full content and write it at once
+                        if (p_postingListSizes[id]==0) {
+                            continue;
+                        }
                         int indexPostingList = id + (int)p_postingListOffset;
                         std::string postingListFullData = GetPostingListFullData(indexPostingList, p_postingListSizes[id], p_postingSelections, p_fullVectors);
                         size_t sizeToCompress = p_postingListSizes[indexPostingList] * p_spacePerVector;
