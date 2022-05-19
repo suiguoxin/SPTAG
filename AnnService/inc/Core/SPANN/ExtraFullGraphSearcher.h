@@ -202,6 +202,11 @@ namespace SPTAG
                         {
                             std::shared_ptr<Compressor> m_pCompressor; //TODO: reuse
                             std::string postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
+                            if (postingListFullData.size() != listInfo->listEleCount * vectorInfoSize)
+                            {
+                                LOG(Helper::LogLevel::LL_Info, "postingListFullData size not match! %d, %d\n", postingListFullData.size(), listInfo->listEleCount * vectorInfoSize);
+                                exit(1);
+                            }
                             p_postingListFullData = postingListFullData.data();
                         }
                         else 
@@ -1004,7 +1009,7 @@ namespace SPTAG
                             LOG(Helper::LogLevel::LL_Error, "Compressed size NOT MATCH! compressed size:%zu pre-calculated compressed size:%zu\n", compressedSize, p_postingListBytes[id + (int)p_postingListOffset]);
                             exit(1);
                         }
-                        if (ptr->WriteBinary(compressedSize, compressedData.c_str()) != compressedSize) {
+                        if (ptr->WriteBinary(compressedSize, compressedData.data()) != compressedSize) {
                             LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
                             exit(1);
                         }
