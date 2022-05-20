@@ -191,20 +191,22 @@ namespace SPTAG
 
 #ifdef BATCH_READ // async batch read
                     auto vectorInfoSize = m_vectorInfoSize;
-                    request.m_callback = [&p_exWorkSpace, &queryResults, &p_index, vectorInfoSize, m_enableDataCompression](Helper::AsyncReadRequest* request)
+                    std::shared_ptr<Compressor> m_pCompressor; //TODO: reuse
+                    
+                    request.m_callback = [&p_exWorkSpace, &queryResults, &p_index, vectorInfoSize, m_enableDataCompression, m_pCompressor](Helper::AsyncReadRequest* request)
                     {
                         char* buffer = request->m_buffer;
                         ListInfo* listInfo = (ListInfo*)(request->m_payload);
 
                         // decompress posting list
                         char* p_postingListFullData;
+                        std::string postingListFullData = "";
                         if (m_enableDataCompression)
                         {
-                            std::shared_ptr<Compressor> m_pCompressor; //TODO: reuse
-                            std::string postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
+                            postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
                             if (postingListFullData.size() != listInfo->listEleCount * vectorInfoSize)
                             {
-                                LOG(Helper::LogLevel::LL_Info, "postingListFullData size not match! %zu, %d\n", postingListFullData.size(), listInfo->listEleCount * vectorInfoSize);
+                                LOG(Helper::LogLevel::LL_Info, "postingListFullData size not match! %zu, %d, \n", postingListFullData.size(), listInfo->listEleCount * vectorInfoSize);
                                 exit(1);
                             }
                             p_postingListFullData = const_cast<char*>(postingListFullData.c_str());
@@ -213,7 +215,7 @@ namespace SPTAG
                         {
                             p_postingListFullData = buffer + listInfo->pageOffset;
                         }
-                        
+
                         ProcessPosting(p_postingListFullData, vectorInfoSize);
                     };
 #else // async read
@@ -811,9 +813,7 @@ namespace SPTAG
                             currOffset = 0;
                         }
 
-                        size_t postingListByte = p_postingListBytes[iter->id];
-
-                        currPageNum += static_cast<int>(postingListByte / PageSize);
+                        currPageNum += static_cast<int>(p_postingListBytes[iter->id] / PageSize);
 
                         listRestSize.erase(iter);
                     }
@@ -912,7 +912,7 @@ namespace SPTAG
                         pageNum = p_postPageNum[i];
                         pageOffset = static_cast<std::uint16_t>(p_postPageOffset[i]);
                         listEleCount = static_cast<int>(p_postingListSizes[i]);
-                        postingListByte = p_enableDataCompression ? p_postingListBytes[i] : p_spacePerVector * p_postingListSizes[i];
+                        postingListByte = p_postingListBytes[i];
                         listPageCount = static_cast<std::uint16_t>(postingListByte / PageSize);
                         if (0 != (postingListByte % PageSize))
                         {
@@ -1003,6 +1003,7 @@ namespace SPTAG
                     size_t postingListFullSize = p_postingListSizes[indexPostingList] * p_spacePerVector;
                     if (postingListFullSize != postingListFullData.size()) {
                         LOG(Helper::LogLevel::LL_Error, "posting list full data size NOT MATCH! postingListFullData.size(): %zu postingListFullSize: %zu \n", postingListFullData.size(), postingListFullSize);
+                        exit(1);
                     }
                     if (p_enableDataCompression) {
                         std::string compressedData = m_pCompressor->Compress(postingListFullData);
@@ -1026,33 +1027,6 @@ namespace SPTAG
                         }
                         listOffset += postingListFullSize;
                     }
-                    //{
-                    //    // selectIdx = id + p_postingListOffset, real index in the vector postingListSize
-                    //    std::size_t selectIdx = p_postingSelections.lower_bound(id + (int)p_postingListOffset);
-                    //    // iterate over the vectors in the posting list
-                    //    for (int j = 0; j < p_postingListSizes[id]; ++j)
-                    //    {
-                    //        if (p_postingSelections[selectIdx].node != id + (int)p_postingListOffset)
-                    //        {
-                    //            LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH! node:%d offset:%zu\n", id + (int)p_postingListOffset, selectIdx);
-                    //            exit(1);
-                    //        }
-
-                    //        i32Val = p_postingSelections[selectIdx++].tonode; // vectorID, int
-                    //        // TODO: consider write vector before vectorID for better compression
-                    //        // write vectorID, int
-                    //        if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-                    //            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                    //            exit(1);
-                    //        }
-                    //        // write one vector
-                    //        if (ptr->WriteBinary(p_fullVectors->PerVectorDataSize(), reinterpret_cast<char*>(p_fullVectors->GetVector(i32Val))) != p_fullVectors->PerVectorDataSize()) {
-                    //            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                    //            exit(1);
-                    //        }
-                    //        listOffset += p_spacePerVector;
-                    //    }
-                    //}
                 }
 
                 paddingSize = PageSize - (listOffset % PageSize);
@@ -1089,7 +1063,7 @@ namespace SPTAG
 
             std::vector<std::shared_ptr<Helper::DiskPriorityIO>> m_indexFiles;
 
-            std::shared_ptr<Compressor> m_pCompressor; // TOOD: not initialized
+            std::unique_ptr<Compressor> m_pCompressor; // TOOD: not initialized
 
             int m_vectorInfoSize = 0;
 
