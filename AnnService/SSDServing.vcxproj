@@ -157,7 +157,7 @@
       <PrecompiledHeaderFile>inc/SSDServing/Common/stdafx.h</PrecompiledHeaderFile>
       <OpenMPSupport>true</OpenMPSupport>
       <AdditionalOptions>/Zc:twoPhase- %(AdditionalOptions)</AdditionalOptions>
-      <LanguageStandard>stdcpp17</LanguageStandard>
+      <LanguageStandard>Default</LanguageStandard>
       <Optimization>Disabled</Optimization>
     </ClCompile>
     <Link>

@@ -204,10 +204,10 @@ namespace SPTAG
                             std::string postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
                             if (postingListFullData.size() != listInfo->listEleCount * vectorInfoSize)
                             {
-                                LOG(Helper::LogLevel::LL_Info, "postingListFullData size not match! %d, %d\n", postingListFullData.size(), listInfo->listEleCount * vectorInfoSize);
+                                LOG(Helper::LogLevel::LL_Info, "postingListFullData size not match! %zu, %d\n", postingListFullData.size(), listInfo->listEleCount * vectorInfoSize);
                                 exit(1);
                             }
-                            p_postingListFullData = postingListFullData.data();
+                            p_postingListFullData = const_cast<char*>(postingListFullData.c_str());
                         }
                         else 
                         {
@@ -267,14 +267,14 @@ namespace SPTAG
                         if (m_enableDataCompression)
                         {
                             std::string postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
-                            p_postingListFullData = postingListFullData.data();
+                            p_postingListFullData = const_cast<char*>(postingListFullData.c_str());
                         }
                         else
                         {
                             p_postingListFullData = buffer + listInfo->pageOffset;
                         }
 
-                        for (int i = 0; i < listInfo->listEleCount; ++i) {
+                        for (size_t i = 0; i < listInfo->listEleCount; ++i) {
                             char* vectorInfo = p_postingListFullData + i * m_vectorInfoSize;
                             int vectorID = *(reinterpret_cast<int*>(vectorInfo));
 
@@ -301,7 +301,7 @@ namespace SPTAG
                 std::string postingListFullData = "";
                 size_t selectIdx = p_selections.lower_bound(indexPostingList);
                 // iterate over all the vectors in the posting list
-                for (int j = 0; j < p_postingListSize; ++j)
+                for (int i = 0; i < p_postingListSize; ++i)
                 {
                     if (p_selections[selectIdx].node != indexPostingList)
                     {
@@ -729,8 +729,9 @@ namespace SPTAG
                 return m_listCount;
             }
 
-            void SelectPostingOffset(size_t p_spacePerVector,
+            void SelectPostingOffset(
                 bool p_enableDataCompression,
+                size_t p_spacePerVector,
                 const std::vector<int>& p_postingListSizes,
                 const std::vector<size_t>& p_postingListBytes,
                 std::unique_ptr<int[]>& p_postPageNum,
@@ -1006,7 +1007,7 @@ namespace SPTAG
                         size_t compressedSize = compressedData.size();
                         if (compressedSize != p_postingListBytes[indexPostingList])
                         {
-                            LOG(Helper::LogLevel::LL_Error, "Compressed size NOT MATCH! compressed size:%zu pre-calculated compressed size:%zu\n", compressedSize, p_postingListBytes[id + (int)p_postingListOffset]);
+                            LOG(Helper::LogLevel::LL_Error, "Compressed size NOT MATCH! compressed size:%zu, pre-calculated compressed size:%zu\n", compressedSize, p_postingListBytes[indexPostingList]);
                             exit(1);
                         }
                         if (ptr->WriteBinary(compressedSize, compressedData.data()) != compressedSize) {
