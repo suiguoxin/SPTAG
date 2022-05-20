@@ -992,17 +992,18 @@ namespace SPTAG
 
                         listOffset = targetOffset;
                     }
-                    
-                    if (p_enableDataCompression) { // get posting list full content and write it at once
-                        if (p_postingListSizes[id]==0) {
+
+                    if (p_postingListSizes[id]==0) {
                             continue;
-                        }
-                        int indexPostingList = id + (int)p_postingListOffset;
-                        std::string postingListFullData = GetPostingListFullData(indexPostingList, p_postingListSizes[id], p_postingSelections, p_fullVectors);
-                        size_t sizeToCompress = p_postingListSizes[indexPostingList] * p_spacePerVector;
-                        if (sizeToCompress != postingListFullData.size()) {
-                            LOG(Helper::LogLevel::LL_Error, "Size to compress NOT MATCH! PostingListFullData size: %zu sizeToCompress: %zu \n", postingListFullData.size(), sizeToCompress);
-                        }
+                    }
+                    int indexPostingList = id + (int)p_postingListOffset;
+                    // get posting list full content and write it at once
+                    std::string postingListFullData = GetPostingListFullData(indexPostingList, p_postingListSizes[id], p_postingSelections, p_fullVectors);
+                    size_t postingListFullSize = p_postingListSizes[indexPostingList] * p_spacePerVector;
+                    if (postingListFullSize != postingListFullData.size()) {
+                        LOG(Helper::LogLevel::LL_Error, "posting list full data size NOT MATCH! postingListFullData.size(): %zu postingListFullSize: %zu \n", postingListFullData.size(), postingListFullSize);
+                    }
+                    if (p_enableDataCompression) {
                         std::string compressedData = m_pCompressor->Compress(postingListFullData);
                         size_t compressedSize = compressedData.size();
                         if (compressedSize != p_postingListBytes[indexPostingList])
@@ -1016,35 +1017,41 @@ namespace SPTAG
                         }
                         listOffset += compressedSize;
                     }
-                    else 
+                    else
                     {
-                        // selectIdx = id + p_postingListOffset, real index in the vector postingListSize
-                        std::size_t selectIdx = p_postingSelections.lower_bound(id + (int)p_postingListOffset);
-                        // iterate over the vectors in the posting list
-                        for (int j = 0; j < p_postingListSizes[id]; ++j)
-                        {
-                            if (p_postingSelections[selectIdx].node != id + (int)p_postingListOffset)
-                            {
-                                LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH! node:%d offset:%zu\n", id + (int)p_postingListOffset, selectIdx);
-                                exit(1);
-                            }
-
-                            i32Val = p_postingSelections[selectIdx++].tonode; // vectorID, int
-                            // TODO: consider write vector before vectorID for better compression
-                            // write vectorID, int
-                            if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
-                                LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                                exit(1);
-                            }
-                            // write one vector
-                            if (ptr->WriteBinary(p_fullVectors->PerVectorDataSize(), reinterpret_cast<char*>(p_fullVectors->GetVector(i32Val))) != p_fullVectors->PerVectorDataSize()) {
-                                LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
-                                exit(1);
-                            }
-                            listOffset += p_spacePerVector;
+                        if (ptr->WriteBinary(postingListFullSize, postingListFullData.data()) != postingListFullSize) {
+                            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                            exit(1);
                         }
+                        listOffset += postingListFullSize;
                     }
-                   
+                    //{
+                    //    // selectIdx = id + p_postingListOffset, real index in the vector postingListSize
+                    //    std::size_t selectIdx = p_postingSelections.lower_bound(id + (int)p_postingListOffset);
+                    //    // iterate over the vectors in the posting list
+                    //    for (int j = 0; j < p_postingListSizes[id]; ++j)
+                    //    {
+                    //        if (p_postingSelections[selectIdx].node != id + (int)p_postingListOffset)
+                    //        {
+                    //            LOG(Helper::LogLevel::LL_Error, "Selection ID NOT MATCH! node:%d offset:%zu\n", id + (int)p_postingListOffset, selectIdx);
+                    //            exit(1);
+                    //        }
+
+                    //        i32Val = p_postingSelections[selectIdx++].tonode; // vectorID, int
+                    //        // TODO: consider write vector before vectorID for better compression
+                    //        // write vectorID, int
+                    //        if (ptr->WriteBinary(sizeof(i32Val), reinterpret_cast<char*>(&i32Val)) != sizeof(i32Val)) {
+                    //            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                    //            exit(1);
+                    //        }
+                    //        // write one vector
+                    //        if (ptr->WriteBinary(p_fullVectors->PerVectorDataSize(), reinterpret_cast<char*>(p_fullVectors->GetVector(i32Val))) != p_fullVectors->PerVectorDataSize()) {
+                    //            LOG(Helper::LogLevel::LL_Error, "Failed to write SSDIndex File!");
+                    //            exit(1);
+                    //        }
+                    //        listOffset += p_spacePerVector;
+                    //    }
+                    //}
                 }
 
                 paddingSize = PageSize - (listOffset % PageSize);
