@@ -223,11 +223,12 @@ namespace SPTAG
                             DimensionType n = p_index->GetFeatureDim();
                             for (char* vectorInfo = p_postingListFullData, *vectorInfoEnd = vectorInfo + listInfo->listEleCount * vectorInfoSize; vectorInfo < vectorInfoEnd; vectorInfo += vectorInfoSize)
                             {
-                                char* leaf = vectorInfo + sizeof(int);
+                                ValueType* leaf = (ValueType*)(vectorInfo + sizeof(int));
                                 for (auto i = 0; i < n; i++)
                                 {
-                                    char* ptrVal = leaf + sizeof(ValueType) * i;
-                                    *ptrVal = *reinterpret_cast<ValueType*>(ptrVal) + *reinterpret_cast<ValueType*>(headVector + sizeof(ValueType) * i);
+                                    leaf[i] += headVector[i];
+                                    // char* ptrVal = leaf + sizeof(ValueType) * i;
+                                    // *ptrVal = *reinterpret_cast<ValueType*>(ptrVal) + *reinterpret_cast<ValueType*>(headVector + sizeof(ValueType) * i);
                                 }
                             }
                         }
@@ -335,9 +336,9 @@ namespace SPTAG
                     if (m_enableDeltaEncoding) {
                         for (auto j = 0; j < p_fullVectors->Dimension(); j++)
                         {
-                            p_vector[j] -= *(headVector + sizeof(ValueType) * j);
+                            p_vector[j] -= headVector[j];
                             //ValueType* ptrVal = p_vector + sizeof(ValueType) * i;
-                            //*ptrVal = *ptrVal -;
+                            //*ptrVal = *ptrVal;
                         }
                     }
                     postingListFullData.append(reinterpret_cast<char*>(p_vector), p_fullVectors->PerVectorDataSize());
@@ -583,11 +584,11 @@ namespace SPTAG
 
                 }
 
-                std::vector<int> postingListIds(headVectorIDS.size());
-                for (int i = 0; i < postingListSize.size(); i++)
-                {
-                    postingListIds[i] = i;
-                }
+                //std::vector<int> postingListIds(headVectorIDS.size());
+                //for (int i = 0; i < postingListSize.size(); i++)
+                //{
+                //    postingListIds[i] = i;
+                //}
                 
                 // iterate over files
                 for (int i = 0; i < p_opt.m_ssdIndexFileNum; i++) {
