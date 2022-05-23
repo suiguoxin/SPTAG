@@ -139,6 +139,7 @@ namespace SPTAG
                 QueryResult& p_queryResults,
                 std::shared_ptr<VectorIndex> p_index,
                 SearchStats* p_stats,
+                bool m_enableDeltaEncoding,
                 bool m_enableDataCompression,
                 std::set<int>* truth, std::map<int, std::set<int>>* found)
             {
@@ -192,8 +193,8 @@ namespace SPTAG
 #ifdef BATCH_READ // async batch read
                     auto vectorInfoSize = m_vectorInfoSize;
                     std::shared_ptr<Compressor> m_pCompressor; //TODO: reuse
-                    
-                    request.m_callback = [&p_exWorkSpace, &queryResults, &p_index, vectorInfoSize, m_enableDataCompression, m_pCompressor](Helper::AsyncReadRequest* request)
+
+                    request.m_callback = [&p_exWorkSpace, &queryResults, &p_index, vectorInfoSize, m_enableDeltaEncoding, curPostingID, m_enableDataCompression, m_pCompressor](Helper::AsyncReadRequest* request)
                     {
                         char* buffer = request->m_buffer;
                         ListInfo* listInfo = (ListInfo*)(request->m_payload);
@@ -216,7 +217,22 @@ namespace SPTAG
                             p_postingListFullData = buffer + listInfo->pageOffset;
                         }
 
-                        ProcessPosting(p_postingListFullData, vectorInfoSize);
+                        // delta encoding
+                        if (m_enableDeltaEncoding) {
+                            ValueType* headVector = (ValueType*)p_index->GetSample(curPostingID);
+                            DimensionType n = p_index->GetFeatureDim();
+                            for (char* vectorInfo = p_postingListFullData, *vectorInfoEnd = vectorInfo + listInfo->listEleCount * vectorInfoSize; vectorInfo < vectorInfoEnd; vectorInfo += vectorInfoSize)
+                            {
+                                char* leaf = vectorInfo + sizeof(int);
+                                for (auto i = 0; i < n; i++)
+                                {
+                                    char* ptrVal = leaf + sizeof(ValueType) * i;
+                                    *ptrVal = *reinterpret_cast<ValueType*>(ptrVal) + *reinterpret_cast<ValueType*>(headVector + sizeof(ValueType) * i);
+                                }
+                            }
+                        }
+
+                        ProcessPosting(p_postingListFullData, vectorInfoSize, m_enableDeltaEncoding, headVector);
                     };
 #else // async read
                     request.m_callback = [&p_exWorkSpace](Helper::AsyncReadRequest* request)
