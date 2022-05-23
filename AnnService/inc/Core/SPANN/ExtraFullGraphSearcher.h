@@ -223,12 +223,10 @@ namespace SPTAG
                             DimensionType n = p_index->GetFeatureDim();
                             for (char* vectorInfo = p_postingListFullData, *vectorInfoEnd = vectorInfo + listInfo->listEleCount * vectorInfoSize; vectorInfo < vectorInfoEnd; vectorInfo += vectorInfoSize)
                             {
-                                ValueType* leaf = (ValueType*)(vectorInfo + sizeof(int));
+                                ValueType* leaf = reinterpret_cast<ValueType*>(vectorInfo + sizeof(int));
                                 for (auto i = 0; i < n; i++)
                                 {
                                     leaf[i] += headVector[i];
-                                    // char* ptrVal = leaf + sizeof(ValueType) * i;
-                                    // *ptrVal = *reinterpret_cast<ValueType*>(ptrVal) + *reinterpret_cast<ValueType*>(headVector + sizeof(ValueType) * i);
                                 }
                             }
                         }
@@ -317,8 +315,8 @@ namespace SPTAG
                 size_t p_postingListSize,
                 Selection& p_selections,
                 std::shared_ptr<VectorSet> p_fullVectors,
-                bool m_enableDeltaEncoding = false,
-                ValueType *headVector = nullptr)
+                bool m_enableDeltaEncoding,
+                ValueType *headVector)
             {
                 std::string postingListFullData = "";
                 size_t selectIdx = p_selections.lower_bound(postingListId);
@@ -332,13 +330,11 @@ namespace SPTAG
                     }
                     int vid = p_selections[selectIdx++].tonode;
                     postingListFullData.append(reinterpret_cast<char*>(&vid), sizeof(int));
-                    ValueType* p_vector = (ValueType*)(p_fullVectors->GetVector(vid)); // TODO: check cast
+                    ValueType* p_vector = reinterpret_cast<ValueType*>(p_fullVectors->GetVector(vid));
                     if (m_enableDeltaEncoding) {
                         for (auto j = 0; j < p_fullVectors->Dimension(); j++)
                         {
                             p_vector[j] -= headVector[j];
-                            //ValueType* ptrVal = p_vector + sizeof(ValueType) * i;
-                            //*ptrVal = *ptrVal;
                         }
                     }
                     postingListFullData.append(reinterpret_cast<char*>(p_vector), p_fullVectors->PerVectorDataSize());
@@ -583,12 +579,6 @@ namespace SPTAG
                     }
 
                 }
-
-                //std::vector<int> postingListIds(headVectorIDS.size());
-                //for (int i = 0; i < postingListSize.size(); i++)
-                //{
-                //    postingListIds[i] = i;
-                //}
                 
                 // iterate over files
                 for (int i = 0; i < p_opt.m_ssdIndexFileNum; i++) {
@@ -603,11 +593,6 @@ namespace SPTAG
                     curPostingListBytes.assign(
                         postingListBytes.begin() + curPostingListOffSet,
                         postingListBytes.begin() + curPostingListEnd);
-
-                    //std::vector<int> curPostingListIds;
-                    //curPostingListIds.assign(
-                    //    postingListIds.begin() + curPostingListOffSet,
-                    //    postingListIds.begin() + curPostingListEnd);
 
                     std::unique_ptr<int[]> postPageNum;
                     std::unique_ptr<std::uint16_t[]> postPageOffset;
