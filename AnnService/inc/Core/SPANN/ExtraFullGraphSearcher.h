@@ -220,11 +220,10 @@ namespace SPTAG
                         // delta encoding
                         if (m_enableDeltaEncoding) {
                             ValueType* headVector = (ValueType*)p_index->GetSample(curPostingID);
-                            DimensionType n = p_index->GetFeatureDim();
                             for (char* vectorInfo = p_postingListFullData, *vectorInfoEnd = vectorInfo + listInfo->listEleCount * vectorInfoSize; vectorInfo < vectorInfoEnd; vectorInfo += vectorInfoSize)
                             {
                                 ValueType* leaf = reinterpret_cast<ValueType*>(vectorInfo + sizeof(int));
-                                for (auto i = 0; i < n; i++)
+                                for (auto i = 0; i < p_index->GetFeatureDim(); i++)
                                 {
                                     leaf[i] += headVector[i];
                                 }
@@ -333,10 +332,11 @@ namespace SPTAG
                     ValueType* p_vector = reinterpret_cast<ValueType*>(p_fullVectors->GetVector(vid));
 
                     if (m_enableDeltaEncoding) {
-                        std::vector<ValueType> p_vector_delta;
-                        for (auto j = 0; j < p_fullVectors->Dimension(); j++)
+                        DimensionType n = p_fullVectors->Dimension();
+                        std::vector<ValueType> p_vector_delta(n);
+                        for (auto j = 0; j < n; j++)
                         {
-                            p_vector_delta.push_back(p_vector[j] - headVector[j]);
+                            p_vector_delta[j] = p_vector[j] - headVector[j];
                         }
                         postingListFullData.append(reinterpret_cast<char*>(&p_vector_delta[0]), p_fullVectors->PerVectorDataSize());
                     }
@@ -584,7 +584,6 @@ namespace SPTAG
                     {
                         postingListBytes[i] = postingListSize[i] * vectorInfoSize;
                     }
-
                 }
                 
                 // iterate over files
