@@ -212,7 +212,7 @@ namespace SPTAG
                             }
                             p_postingListFullData = const_cast<char*>(postingListFullData.c_str());
                         }
-                        else 
+                        else
                         {
                             p_postingListFullData = buffer + listInfo->pageOffset;
                         }
@@ -231,7 +231,7 @@ namespace SPTAG
                             }
                         }
 
-                        ProcessPosting(p_postingListFullData, vectorInfoSize, m_enableDeltaEncoding, headVector);
+                        ProcessPosting(p_postingListFullData, vectorInfoSize);
                     };
 #else // async read
                     request.m_callback = [&p_exWorkSpace](Helper::AsyncReadRequest* request)
@@ -316,7 +316,7 @@ namespace SPTAG
                 Selection& p_selections,
                 std::shared_ptr<VectorSet> p_fullVectors,
                 bool m_enableDeltaEncoding,
-                ValueType *headVector)
+                const ValueType *headVector)
             {
                 std::string postingListFullData = "";
                 size_t selectIdx = p_selections.lower_bound(postingListId);
@@ -331,13 +331,20 @@ namespace SPTAG
                     int vid = p_selections[selectIdx++].tonode;
                     postingListFullData.append(reinterpret_cast<char*>(&vid), sizeof(int));
                     ValueType* p_vector = reinterpret_cast<ValueType*>(p_fullVectors->GetVector(vid));
+
                     if (m_enableDeltaEncoding) {
+                        std::vector<ValueType> p_vector_delta;
                         for (auto j = 0; j < p_fullVectors->Dimension(); j++)
                         {
-                            p_vector[j] -= headVector[j];
+                            p_vector_delta.push_back(p_vector[j] - headVector[j]);
                         }
+                        postingListFullData.append(reinterpret_cast<char*>(&p_vector_delta[0]), p_fullVectors->PerVectorDataSize());
                     }
-                    postingListFullData.append(reinterpret_cast<char*>(p_vector), p_fullVectors->PerVectorDataSize());
+                    else
+                    {
+                        postingListFullData.append(reinterpret_cast<char*>(p_vector), p_fullVectors->PerVectorDataSize());
+                    }
+                    
                 }
                 return postingListFullData;
             }
@@ -542,8 +549,8 @@ namespace SPTAG
                 if (p_opt.m_distCalcMethod == DistCalcMethod::Cosine && !p_reader->IsNormalized() && !p_headIndex->m_pQuantizer) fullVectors->Normalize(p_opt.m_iSSDNumberOfThreads);
                 
                 // get compressed size of each posting list
-                LOG(Helper::LogLevel::LL_Info, "m_enableDataCompression: %s\n", p_opt.m_enableDataCompression ? "true" : "false");
-                LOG(Helper::LogLevel::LL_Info, "m_enableDeltaEncoding: %s\n", p_opt.m_enableDeltaEncoding ? "true" : "false");
+                LOG(Helper::LogLevel::LL_Info, "EnableDeltaEncoding: %s\n", p_opt.m_enableDataCompression ? "true" : "false");
+                LOG(Helper::LogLevel::LL_Info, "EnableDeltaEncoding: %s\n", p_opt.m_enableDeltaEncoding ? "true" : "false");
                 std::vector<size_t> postingListBytes(headVectorIDS.size());
                 if (p_opt.m_enableDataCompression)
                 {
