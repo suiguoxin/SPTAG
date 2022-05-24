@@ -13,7 +13,7 @@ namespace SPTAG {
         class Compressor
         {
         public:
-            Compressor(int level=1)
+            Compressor(int level=0)
             {
                 compress_level = level;
             }
