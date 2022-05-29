@@ -1047,7 +1047,7 @@ namespace SPTAG
                         headVector = (ValueType*)p_headIndex->GetSample(postingListId);
                     }
                     std::string postingListFullData = GetPostingListFullData(
-                            postingListId, p_postingListSizes[id], p_postingSelections, p_fullVectors, m_enableDeltaEncoding, headVector);
+                        postingListId, p_postingListSizes[id], p_postingSelections, p_fullVectors, m_enableDeltaEncoding, headVector);
                     size_t postingListFullSize = p_postingListSizes[id] * p_spacePerVector;
                     if (postingListFullSize != postingListFullData.size()) {
                         LOG(Helper::LogLevel::LL_Error, "posting list full data size NOT MATCH! postingListFullData.size(): %zu postingListFullSize: %zu \n", postingListFullData.size(), postingListFullSize);
