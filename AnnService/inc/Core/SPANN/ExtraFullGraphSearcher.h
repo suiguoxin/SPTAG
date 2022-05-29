@@ -156,7 +156,7 @@ namespace SPTAG
 #endif
 
                 bool oneContext = (m_indexFiles.size() == 1);
-                auto m_pCompressor = std::make_shared<Compressor>(); // no need compress level info for decompress
+                auto m_pCompressor = std::make_unique<Compressor>(); // no need compress level to decompress
                 for (uint32_t pi = 0; pi < postingListCount; ++pi)
                 {
                     auto curPostingID = p_exWorkSpace->m_postingIDs[pi];
@@ -193,11 +193,10 @@ namespace SPTAG
 #ifdef BATCH_READ // async batch read
                     auto vectorInfoSize = m_vectorInfoSize;
 
-                    request.m_callback = [pi, &p_exWorkSpace, &queryResults, &p_index, vectorInfoSize, m_enableDeltaEncoding, curPostingID, m_enableDataCompression, m_pCompressor](Helper::AsyncReadRequest* request)
+                    request.m_callback = [&p_exWorkSpace, &queryResults, &p_index, vectorInfoSize, m_enableDeltaEncoding, curPostingID, m_enableDataCompression, &m_pCompressor](Helper::AsyncReadRequest* request)
                     {
                         char* buffer = request->m_buffer;
                         ListInfo* listInfo = (ListInfo*)(request->m_payload);
-
 
                         // decompress posting list
                         char* p_postingListFullData = buffer + listInfo->pageOffset;
@@ -207,9 +206,6 @@ namespace SPTAG
                             if (listInfo->listEleCount != 0)
                             {
                                 postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
-                                if (curPostingID == 2858 || curPostingID == 87283) {
-                                    LOG(Helper::LogLevel::LL_Info, "decompressed data size %zu, data: %s \n", postingListFullData.size(), postingListFullData);
-                                }
                             }
                             if (postingListFullData.size() != listInfo->listEleCount * vectorInfoSize)
                             {
@@ -554,7 +550,7 @@ namespace SPTAG
                 LOG(Helper::LogLevel::LL_Info, "EnableDeltaEncoding: %s\n", p_opt.m_enableDeltaEncoding ? "true" : "false");
                 LOG(Helper::LogLevel::LL_Info, "EnableDataCompression: %s, ZstdCompressLevel: %d\n", p_opt.m_enableDataCompression ? "true" : "false", p_opt.m_zstdCompressLevel);
                 std::vector<size_t> postingListBytes(headVectorIDS.size());
-                auto m_pCompressor = std::make_shared<Compressor>(p_opt.m_zstdCompressLevel);
+                auto m_pCompressor = std::make_unique<Compressor>(p_opt.m_zstdCompressLevel);
                 if (p_opt.m_enableDataCompression)
                 {
                     LOG(Helper::LogLevel::LL_Info, "Getting compressed size of each posting list...\n");
@@ -565,19 +561,13 @@ namespace SPTAG
                             postingListBytes[i] = 0;
                             continue;
                         }
-                        std::string postingListFullData;
+                        ValueType* headVector = nullptr;
                         if (p_opt.m_enableDeltaEncoding)
                         {
-                            ValueType* headVector = (ValueType*)p_headIndex->GetSample(i);
-                            postingListFullData = GetPostingListFullData(
-                                i, postingListSize[i], selections, fullVectors, true, headVector);
+                            headVector = (ValueType*)p_headIndex->GetSample(i);
                         }
-                        else
-                        {
-                            postingListFullData = GetPostingListFullData(
-                                i, postingListSize[i], selections, fullVectors);
-                        }
-                        
+                        std::string postingListFullData = GetPostingListFullData(
+                            i, postingListSize[i], selections, fullVectors, p_opt.m_enableDeltaEncoding, headVector);
                         size_t sizeToCompress = postingListSize[i] * vectorInfoSize;
                         if (sizeToCompress != postingListFullData.size()) {
                             LOG(Helper::LogLevel::LL_Error, "Size to compress NOT MATCH! PostingListFullData size: %zu sizeToCompress: %zu \n", postingListFullData.size(), sizeToCompress);
@@ -875,7 +865,7 @@ namespace SPTAG
             void OutputSSDIndexFile(const std::string& p_outputFile,
                 bool m_enableDeltaEncoding,
                 bool m_enableDataCompression,
-                std::shared_ptr<Compressor> m_pCompressor,
+                const std::unique_ptr<Compressor>& m_pCompressor,
                 size_t p_spacePerVector,
                 const std::vector<int>& p_postingListSizes,
                 const std::vector<size_t>& p_postingListBytes,
@@ -1051,18 +1041,13 @@ namespace SPTAG
                     }
                     int postingListId = id + (int)p_postingListOffset;
                     // get posting list full content and write it at once
-                    std::string postingListFullData;
-                    if (m_enableDeltaEncoding) 
+                    ValueType* headVector = nullptr;
+                    if (m_enableDeltaEncoding)
                     {
-                        ValueType* headVector = (ValueType*)p_headIndex->GetSample(postingListId);
-                        postingListFullData = GetPostingListFullData(
-                            postingListId, p_postingListSizes[id], p_postingSelections, p_fullVectors, true, headVector);
+                        headVector = (ValueType*)p_headIndex->GetSample(postingListId);
                     }
-                    else
-                    {
-                        postingListFullData = GetPostingListFullData(
-                            postingListId, p_postingListSizes[id], p_postingSelections, p_fullVectors);
-                    }
+                    std::string postingListFullData = GetPostingListFullData(
+                            postingListId, p_postingListSizes[id], p_postingSelections, p_fullVectors, m_enableDeltaEncoding, headVector);
                     size_t postingListFullSize = p_postingListSizes[id] * p_spacePerVector;
                     if (postingListFullSize != postingListFullData.size()) {
                         LOG(Helper::LogLevel::LL_Error, "posting list full data size NOT MATCH! postingListFullData.size(): %zu postingListFullSize: %zu \n", postingListFullData.size(), postingListFullSize);
@@ -1070,12 +1055,6 @@ namespace SPTAG
                     }
                     if (m_enableDataCompression) {
                         std::string compressedData = m_pCompressor->Compress(postingListFullData);
-                        if (postingListId == 2858 || postingListId == 87283)
-                        {
-                            LOG(Helper::LogLevel::LL_Info, "compressed data size %d, %s \n", compressedData.size(), compressedData);
-                            std::string fullData = m_pCompressor->Decompress(compressedData.c_str(), compressedData.size());
-                            LOG(Helper::LogLevel::LL_Info, "decompressed data size %d, % s \n", fullData.size(), fullData);
-                        }
                         size_t compressedSize = compressedData.size();
                         if (compressedSize != p_postingListBytes[id])
                         {
