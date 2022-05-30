@@ -203,7 +203,7 @@ namespace SPTAG
                         {
                             if (listInfo->listEleCount != 0)
                             {
-                                postingListFullData = m_enableDictTraining ? m_pCompressor->DecompressWithDict(buffer + listInfo->pageOffset, listInfo->listTotalBytes) : m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
+                                postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes, m_enableDictTraining);
                             }
                             if (postingListFullData.size() != listInfo->listEleCount * vectorInfoSize)
                             {
@@ -278,7 +278,7 @@ namespace SPTAG
                         char* p_postingListFullData;
                         if (m_enableDataCompression)
                         {
-                            std::string postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes);
+                            std::string postingListFullData = m_pCompressor->Decompress(buffer + listInfo->pageOffset, listInfo->listTotalBytes, m_enableDictTraining);
                             p_postingListFullData = const_cast<char*>(postingListFullData.c_str());
                         }
                         else
@@ -600,7 +600,7 @@ namespace SPTAG
                             LOG(Helper::LogLevel::LL_Error, "Size to compress NOT MATCH! PostingListFullData size: %zu sizeToCompress: %zu \n", postingListFullData.size(), sizeToCompress);
                         }
                         postingListBytes[i] = m_pCompressor->GetCompressedSize(postingListFullData, true);
-                        if (i % 10000 == 0 || postingListBytes[i] > p_opt.m_postingPageLimit * PageSize) {
+                        if (i % 10000 == 0 || postingListBytes[i] > static_cast<uint64_t>(p_opt.m_postingPageLimit) * PageSize) {
                             LOG(Helper::LogLevel::LL_Info, "Posting list %d/%d, compressed size: %d, compression ratio: %.4f\n", i, postingListSize.size(), postingListBytes[i], postingListBytes[i] / float(sizeToCompress));
                         }
                     }
@@ -1150,7 +1150,7 @@ namespace SPTAG
                         exit(1);
                     }
                     if (m_enableDataCompression) {
-                        std::string compressedData = m_enableDictTraining ? m_pCompressor->CompressWithDict(postingListFullData) : m_pCompressor->Compress(postingListFullData);
+                        std::string compressedData =  m_pCompressor->Compress(postingListFullData, m_enableDictTraining);
                         size_t compressedSize = compressedData.size();
                         if (compressedSize != p_postingListBytes[id])
                         {

@@ -9,23 +9,25 @@
 #include "zdict.h"
 #include "../Common.h"
 
-namespace SPTAG {
-    namespace SPANN {
+namespace SPTAG
+{
+    namespace SPANN
+    {
         class Compressor
         {
         public:
-            Compressor(int level=0)
+            Compressor(int level = 0, int bufferCapacity = 102400)
             {
                 compress_level = level;
-                dictBufferCapacity = 102400;
+                dictBufferCapacity = bufferCapacity;
             }
 
-            virtual ~Compressor(){}
+            virtual ~Compressor() {}
 
-            void TrainDict(std::string samplesBuffer, const size_t* samplesSizes, unsigned nbSamples)
+            void TrainDict(std::string samplesBuffer, const size_t *samplesSizes, unsigned nbSamples)
             {
                 dictBuffer.resize(dictBufferCapacity);
-                size_t dictSize = ZDICT_trainFromBuffer((void*)dictBuffer.data(), dictBufferCapacity, (void*)samplesBuffer.data(), &samplesSizes[0], nbSamples);
+                size_t dictSize = ZDICT_trainFromBuffer((void *)dictBuffer.data(), dictBufferCapacity, (void *)samplesBuffer.data(), &samplesSizes[0], nbSamples);
                 if (ZDICT_isError(dictSize))
                 {
                     LOG(Helper::LogLevel::LL_Error, "ZDICT_trainFromBuffer() failed: %s \n", ZDICT_getErrorName(dictSize));
@@ -47,8 +49,9 @@ namespace SPTAG {
 
             void CreateCDict()
             {
-                cdict = ZSTD_createCDict((void*)dictBuffer.data(), dictBuffer.size(), compress_level);
-                if (cdict == NULL) {
+                cdict = ZSTD_createCDict((void *)dictBuffer.data(), dictBuffer.size(), compress_level);
+                if (cdict == NULL)
+                {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD_createCDict() failed! \n");
                     exit(1);
                 }
@@ -56,24 +59,27 @@ namespace SPTAG {
 
             void CreateDDict()
             {
-                ddict = ZSTD_createDDict((void*)dictBuffer.data(), dictBuffer.size());
-                if (ddict == NULL) {
+                ddict = ZSTD_createDDict((void *)dictBuffer.data(), dictBuffer.size());
+                if (ddict == NULL)
+                {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD_createDDict() failed! \n");
                     exit(1);
                 }
             }
-            
-            std::string CompressWithDict(const std::string &src) {
+
+            std::string CompressWithDict(const std::string &src)
+            {
                 size_t est_compress_size = ZSTD_compressBound(src.size());
                 std::string comp_buffer{};
                 comp_buffer.resize(est_compress_size);
 
-                ZSTD_CCtx* const cctx = ZSTD_createCCtx();
-                if (cctx == NULL) {
+                ZSTD_CCtx *const cctx = ZSTD_createCCtx();
+                if (cctx == NULL)
+                {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD_createCCtx() failed! \n");
                     exit(1);
                 }
-                size_t compressed_size = ZSTD_compress_usingCDict(cctx, (void*)comp_buffer.data(), est_compress_size, src.data(), src.size(), cdict);
+                size_t compressed_size = ZSTD_compress_usingCDict(cctx, (void *)comp_buffer.data(), est_compress_size, src.data(), src.size(), cdict);
                 if (ZSTD_isError(compressed_size))
                 {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD compress error %s, \n", ZSTD_getErrorName(compressed_size));
@@ -86,20 +92,22 @@ namespace SPTAG {
                 return comp_buffer;
             }
 
-            std::string DecompressWithDict(const char* src, size_t srcSize) {
+            std::string DecompressWithDict(const char *src, size_t srcSize)
+            {
                 auto const est_decomp_size =
                     ZSTD_getFrameContentSize(src, srcSize);
 
                 std::string decomp_buffer{};
                 decomp_buffer.resize(est_decomp_size);
 
-                ZSTD_DCtx* const dctx = ZSTD_createDCtx();
-                if (dctx == NULL) {
+                ZSTD_DCtx *const dctx = ZSTD_createDCtx();
+                if (dctx == NULL)
+                {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD_createDCtx() failed! \n");
                     exit(1);
                 }
                 size_t const decomp_size = ZSTD_decompress_usingDDict(dctx,
-                    (void*)decomp_buffer.data(), est_decomp_size, src, srcSize, ddict);
+                                                                      (void *)decomp_buffer.data(), est_decomp_size, src, srcSize, ddict);
                 if (ZSTD_isError(decomp_size))
                 {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD decompress error %s, \n", ZSTD_getErrorName(decomp_size));
@@ -111,14 +119,14 @@ namespace SPTAG {
                 decomp_buffer.shrink_to_fit();
                 return decomp_buffer;
             }
-            
-            std::string Compress(const std::string &src)
+
+            std::string CompressWithoutDict(const std::string &src)
             {
                 size_t est_comp_size = ZSTD_compressBound(src.size());
                 std::string buffer{};
                 buffer.resize(est_comp_size);
-                size_t compressed_size = ZSTD_compress((void*)buffer.data(), est_comp_size,
-                    src.data(), src.size(), compress_level);
+                size_t compressed_size = ZSTD_compress((void *)buffer.data(), est_comp_size,
+                                                       src.data(), src.size(), compress_level);
                 if (ZSTD_isError(compressed_size))
                 {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD compress error %s, \n", ZSTD_getErrorName(compressed_size));
@@ -130,14 +138,16 @@ namespace SPTAG {
                 return buffer;
             }
 
-            std::string Decompress(const char * src, size_t srcSize)
+            std::string DecompressWithoutDict(const char *src, size_t srcSize)
             {
                 size_t est_decomp_size = ZSTD_getFrameContentSize(src, srcSize);
-                if (est_decomp_size == ZSTD_CONTENTSIZE_ERROR) {
+                if (est_decomp_size == ZSTD_CONTENTSIZE_ERROR)
+                {
                     LOG(Helper::LogLevel::LL_Error, "not compressed by zstd!\n");
                     exit(1);
                 }
-                else if (est_decomp_size == ZSTD_CONTENTSIZE_UNKNOWN) {
+                else if (est_decomp_size == ZSTD_CONTENTSIZE_UNKNOWN)
+                {
                     LOG(Helper::LogLevel::LL_Error, "original size unknown!\n");
                     exit(1);
                 }
@@ -145,7 +155,7 @@ namespace SPTAG {
                 est_decomp_size *= 10;
                 dst.resize(est_decomp_size);
                 size_t const decomp_size = ZSTD_decompress(
-                    (void*)dst.data(), est_decomp_size, src, srcSize);
+                    (void *)dst.data(), est_decomp_size, src, srcSize);
                 if (ZSTD_isError(decomp_size))
                 {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD decompress error %s, \n", ZSTD_getErrorName(decomp_size));
@@ -157,15 +167,20 @@ namespace SPTAG {
                 return dst;
             }
 
-            // return the compressed sie
-            size_t GetCompressedSize(const std::string &src, bool useDict=true)
+            std::string Compress(const std::string &src, const bool useDict)
             {
-                if (useDict)
-                {
-                    std::string dst = CompressWithDict(src);
-                    return dst.size();
-                }
-                std::string dst = Compress(src);
+                return useDict ? CompressWithDict(src) : CompressWithoutDict(src);
+            }
+
+            std::string Decompress(const char *src, size_t srcSize, const bool useDict)
+            {
+                return useDict ? DecompressWithDict(src, srcSize) : DecompressWithoutDict(src, srcSize);
+            }
+
+            // return the compressed sie
+            size_t GetCompressedSize(const std::string &src, bool useDict)
+            {
+                std::string dst = Compress(src, useDict);
                 return dst.size();
             }
 
@@ -174,8 +189,8 @@ namespace SPTAG {
 
             std::string dictBuffer;
             size_t dictBufferCapacity;
-            ZSTD_CDict* cdict;
-            ZSTD_DDict* ddict;
+            ZSTD_CDict *cdict;
+            ZSTD_DDict *ddict;
         };
     } // SPANN
 } // SPTAG
