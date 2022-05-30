@@ -86,9 +86,9 @@ namespace SPTAG {
                 return comp_buffer;
             }
 
-            std::string DecompressWithDict(const std::string &src) {
+            std::string DecompressWithDict(const char* src, size_t srcSize) {
                 auto const est_decomp_size =
-                    ZSTD_getFrameContentSize(src.data(), src.size());
+                    ZSTD_getFrameContentSize(src, srcSize);
 
                 std::string decomp_buffer{};
                 decomp_buffer.resize(est_decomp_size);
@@ -99,7 +99,7 @@ namespace SPTAG {
                     exit(1);
                 }
                 size_t const decomp_size = ZSTD_decompress_usingDDict(dctx,
-                    (void*)decomp_buffer.data(), est_decomp_size, src.data(), src.size(), ddict);
+                    (void*)decomp_buffer.data(), est_decomp_size, src, srcSize, ddict);
                 if (ZSTD_isError(decomp_size))
                 {
                     LOG(Helper::LogLevel::LL_Error, "ZSTD decompress error %s, \n", ZSTD_getErrorName(decomp_size));
