@@ -144,7 +144,7 @@ namespace SPTAG
 
             virtual ~Compressor() {}
 
-            void TrainDict(std::string samplesBuffer, const size_t *samplesSizes, unsigned nbSamples)
+            std::size_t TrainDict(std::string samplesBuffer, const size_t *samplesSizes, unsigned nbSamples)
             {
                 dictBuffer.resize(dictBufferCapacity);
                 size_t dictSize = ZDICT_trainFromBuffer((void *)dictBuffer.data(), dictBufferCapacity, (void *)samplesBuffer.data(), &samplesSizes[0], nbSamples);
@@ -157,6 +157,8 @@ namespace SPTAG
                 dictBuffer.shrink_to_fit();
 
                 CreateCDict();
+
+                return dictSize;
             }
 
             std::string GetDictBuffer()

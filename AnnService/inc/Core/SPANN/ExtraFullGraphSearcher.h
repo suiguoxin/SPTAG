@@ -598,8 +598,8 @@ namespace SPTAG
                         if (samplesBuffer.size() > p_opt.m_minDictTraingBufferSize) break;
                     }
                     LOG(Helper::LogLevel::LL_Info, "Using the first %zu postingLists to train dictionary... \n", samplesSizes.size());
-                    m_pCompressor->TrainDict(samplesBuffer, &samplesSizes[0], samplesSizes.size());
-                    LOG(Helper::LogLevel::LL_Info, "Dictionary trained.\n");
+                    std::size_t dictSize = m_pCompressor->TrainDict(samplesBuffer, &samplesSizes[0], samplesSizes.size());
+                    LOG(Helper::LogLevel::LL_Info, "Dictionary trained, dictionary size: %zu \n", dictSize);
 
                     // TODO: omp parallel
                     for (int i = 0; i < postingListSize.size(); i++) {
