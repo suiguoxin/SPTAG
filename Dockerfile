@@ -14,7 +14,6 @@ COPY AnnService ./AnnService/
 COPY Test ./Test/
 COPY Wrappers ./Wrappers/
 COPY GPUSupport ./GPUSupport/
-
 COPY ThirdParty ./ThirdParty/
 
 RUN mkdir build && cd build && cmake .. && make -j$(nproc)
