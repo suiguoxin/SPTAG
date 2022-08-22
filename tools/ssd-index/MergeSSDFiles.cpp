@@ -25,7 +25,7 @@ public:
 
     VectorValueType m_valueType;
     
-    std::string m_step = "Parse";
+    std::string m_step = "Parse"; // "Merge"
 
     std::string m_headIndex = "HeadIndex";
 
@@ -178,6 +178,7 @@ public:
     }
 
     std::vector<std::vector<ListInfo>> m_listInfos;
+    // std::vector<ListInfo> m_listInfos;
 
     std::vector<std::shared_ptr<Helper::DiskPriorityIO>> m_indexFiles;
 
@@ -190,6 +191,25 @@ public:
 
 template <typename ValueType>
 ErrorCode MergeSSDFiles() {
+    // load original 
+    ErrorCode ret;
+
+    std::shared_ptr<SSDIndex> ssdIndex;
+    ErrorCode ret;
+    if ((ret =ssdIndex::LoadIndex(options)) != ErrorCode::Success) {
+        LOG(Helper::LogLevel::LL_Error, "Cannot load SSD index. \n");
+        return ret;
+    }
+    
+    // calculate new m_listInfo
+    ListInfo m_listInfo;
+    m_listInfo.m_listCount = m_listInfos[]
+
+    // write SSDIndexFile: listInfo
+
+    // write SSDIndexFIle: PostingLists
+
+
     return ErrorCode::Success;
 }
 
