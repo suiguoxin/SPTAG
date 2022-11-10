@@ -119,6 +119,29 @@ inline __m256 _mm256_mul_epi8(__m256i X, __m256i Y)
     return _mm256_cvtepi32_ps(_mm256_add_epi32(_mm256_madd_epi16(xlo, ylo), _mm256_madd_epi16(xhi, yhi)));
 }
 
+inline __m128 _mm_mulhi_epi8(__m128i X)
+{
+	__m128i zero = _mm_setzero_si128();
+
+	__m128i sign_x = _mm_cmplt_epi8(X, zero);
+
+	__m128i xhi = _mm_unpackhi_epi8(X, sign_x);
+
+	return _mm_cvtepi32_ps(_mm_add_epi32(_mm_setzero_si128(), _mm_madd_epi16(xhi, xhi)));
+}
+
+inline __m128 _mm_mulhi_epi8_shift32(__m128i X)
+{
+	__m128i zero = _mm_setzero_si128();
+	X = _mm_srli_epi64(X, 32);
+
+	__m128i sign_x = _mm_cmplt_epi8(X, zero);
+
+	__m128i xhi = _mm_unpackhi_epi8(X, sign_x);
+
+	return _mm_cvtepi32_ps(_mm_add_epi32(_mm_setzero_si128(), _mm_madd_epi16(xhi, xhi)));
+}
+
 inline __m256 _mm256_sqdf_epi8(__m256i X, __m256i Y)
 {
     __m256i zero = _mm256_setzero_si256();
@@ -336,29 +359,55 @@ float DistanceUtils::ComputeL2Distance_AVX(const std::int8_t* pX, const std::int
 {
     const std::int8_t* pEnd32 = pX + ((length >> 5) << 5);
     const std::int8_t* pEnd16 = pX + ((length >> 4) << 4);
+    const std::int8_t* pEnd8 = pX + ((length >> 3) << 3);
     const std::int8_t* pEnd4 = pX + ((length >> 2) << 2);
     const std::int8_t* pEnd1 = pX + length;
 
     __m256 diff256 = _mm256_setzero_ps();
-    while (pX < pEnd32) {
-        REPEAT(__m256i, __m256i, 32, _mm256_loadu_si256, _mm256_sqdf_epi8, _mm256_add_ps, diff256)
+    while (pX < pEnd32)
+    {
+        __m256i r = _mm256_subs_epi8(_mm256_loadu_si256((__m256i *)pX), _mm256_loadu_si256((__m256i *)pY)); // 32 int8_t
+        diff256 = _mm256_add_ps(diff256, _mm256_mul_epi8(r, r)); // 16 int16_t
+        pX += 32;
+        pY += 32;
     }
-    __m128 diff128 = _mm_add_ps(_mm256_castps256_ps128(diff256), _mm256_extractf128_ps(diff256, 1));
-    while (pX < pEnd16) {
-        REPEAT(__m128i, __m128i, 16, _mm_loadu_si128, _mm_sqdf_epi8, _mm_add_ps, diff128)
-    }
-    float diff = DIFF128[0] + DIFF128[1] + DIFF128[2] + DIFF128[3];
+    diff256 = _mm256_hadd_ps(_mm256_hadd_ps(diff256, diff256), diff256);
+    float res = DIFF256[0] + DIFF256[4];
+    
+    if (pX < pEnd16)
+    {
+        __m128 diff128 = _mm_setzero_ps();
+        __m128i r = _mm_subs_epi8(_mm_loadu_si128((__m128i *)pX), _mm_loadu_si128((__m128i *)pY));
+        diff128 = _mm_add_ps(diff128, _mm_mul_epi8(r, r)); // 16 int16_t
+        pX += 16;
+        pY += 16;
 
-    while (pX < pEnd4) {
-        float c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
-        c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
-        c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
-        c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+        diff128 = _mm_hadd_ps(_mm_hadd_ps(diff128, diff128), diff128);
+        res += DIFF128[0];
     }
+
+    if (pX < pEnd8)
+    {
+        __m128 diff128 = _mm_setzero_ps();
+        __m128i r = _mm_subs_epi8(_mm_load_si128((__m128i *)(pX - 8)), _mm_load_si128((__m128i *)(pY - 8)));
+        diff128 = _mm_add_ps(diff128, _mm_mulhi_epi8(r));
+        pX += 8;
+        pY += 8;
+        diff128 = _mm_hadd_ps(_mm_hadd_ps(diff128, diff128), diff128);
+        res += DIFF128[0];
+    }
+
+    if (pX < pEnd4) {
+        __m128 diff128 = _mm_setzero_ps();
+        __m128i r = _mm_subs_epi8(_mm_load_si128((__m128i *)(pX - 12)), _mm_load_si128((__m128i *)(pY - 12)));
+        diff128 = _mm_add_ps(diff128, _mm_mulhi_epi8_shift32(r));
+        res += DIFF128[0] + DIFF128[1];
+    }
+
     while (pX < pEnd1) {
-        float c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+        float c1 = ((float)(*pX++) - (float)(*pY++)); res += c1 * c1;
     }
-    return diff;
+    return res;
 }
 
 float DistanceUtils::ComputeL2Distance_AVX512(const std::int8_t* pX, const std::int8_t* pY, DimensionType length)
@@ -433,6 +482,7 @@ float DistanceUtils::ComputeL2Distance_AVX(const std::uint8_t* pX, const std::ui
 {
     const std::uint8_t* pEnd32 = pX + ((length >> 5) << 5);
     const std::uint8_t* pEnd16 = pX + ((length >> 4) << 4);
+    const std::uint8_t* pEnd8 = pX + ((length >> 3) << 3);
     const std::uint8_t* pEnd4 = pX + ((length >> 2) << 2);
     const std::uint8_t* pEnd1 = pX + length;
 
@@ -440,22 +490,52 @@ float DistanceUtils::ComputeL2Distance_AVX(const std::uint8_t* pX, const std::ui
     while (pX < pEnd32) {
         REPEAT(__m256i, __m256i, 32, _mm256_loadu_si256, _mm256_sqdf_epu8, _mm256_add_ps, diff256)
     }
-    __m128 diff128 = _mm_add_ps(_mm256_castps256_ps128(diff256), _mm256_extractf128_ps(diff256, 1));
-    while (pX < pEnd16) {
-        REPEAT(__m128i, __m128i, 16, _mm_loadu_si128, _mm_sqdf_epu8, _mm_add_ps, diff128)
-    }
-    float diff = DIFF128[0] + DIFF128[1] + DIFF128[2] + DIFF128[3];
 
-    while (pX < pEnd4) {
-        float c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
-        c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
-        c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
-        c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+    __m256 diff256 = _mm256_setzero_ps();
+    while (pX < pEnd32)
+    {
+        __m256i r = _mm256_subs_epi8(_mm256_loadu_si256((__m256i *)pX), _mm256_loadu_si256((__m256i *)pY)); // 32 int8_t
+        diff256 = _mm256_add_ps(diff256, _mm256_mul_epi8(r, r)); // 16 int16_t
+        pX += 32;
+        pY += 32;
     }
+    diff256 = _mm256_hadd_ps(_mm256_hadd_ps(diff256, diff256), diff256);
+    float res = DIFF256[0] + DIFF256[4];
+    
+    if (pX < pEnd16)
+    {
+        __m128 diff128 = _mm_setzero_ps();
+        __m128i r = _mm_subs_epi8(_mm_loadu_si128((__m128i *)pX), _mm_loadu_si128((__m128i *)pY));
+        diff128 = _mm_add_ps(diff128, _mm_mul_epi8(r, r)); // 16 int16_t
+        pX += 16;
+        pY += 16;
+
+        diff128 = _mm_hadd_ps(_mm_hadd_ps(diff128, diff128), diff128);
+        res += DIFF128[0];
+    }
+
+    if (pX < pEnd8)
+    {
+        __m128 diff128 = _mm_setzero_ps();
+        __m128i r = _mm_subs_epi8(_mm_load_si128((__m128i *)(pX - 8)), _mm_load_si128((__m128i *)(pY - 8)));
+        diff128 = _mm_add_ps(diff128, _mm_mulhi_epi8(r));
+        pX += 8;
+        pY += 8;
+        diff128 = _mm_hadd_ps(_mm_hadd_ps(diff128, diff128), diff128);
+        res += DIFF128[0];
+    }
+
+    if (pX < pEnd4) {
+        __m128 diff128 = _mm_setzero_ps();
+        __m128i r = _mm_subs_epi8(_mm_load_si128((__m128i *)(pX - 12)), _mm_load_si128((__m128i *)(pY - 12)));
+        diff128 = _mm_add_ps(diff128, _mm_mulhi_epi8_shift32(r));
+        res += DIFF128[0] + DIFF128[1];
+    }
+
     while (pX < pEnd1) {
-        float c1 = ((float)(*pX++) - (float)(*pY++)); diff += c1 * c1;
+        float c1 = ((float)(*pX++) - (float)(*pY++)); res += c1 * c1;
     }
-    return diff;
+    return res;
 }
 
 float DistanceUtils::ComputeL2Distance_AVX512(const std::uint8_t* pX, const std::uint8_t* pY, DimensionType length)

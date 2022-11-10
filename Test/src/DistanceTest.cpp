@@ -89,6 +89,7 @@ BOOST_AUTO_TEST_CASE(TestDistanceComputation)
 {
     test<float>(1);
     test<std::int8_t>(127);
+    test<std::uint8_t>(127);
     test<std::int16_t>(32767);
 }
 
